@@ -5,7 +5,7 @@
 and then writes them, in their category, one per line.
 """
 
-import requests, bs4, re, datetime, time
+import requests, bs4, re, datetime, time, sys
 from bs4 import NavigableString
 from multiprocessing.dummy import Pool as ThreadPool
 
@@ -166,14 +166,33 @@ def parse_category_data(link):
     all_data = []
     #for link in links:
     print('Getting Web page...')
-    page = requests.get(link)
-    page.raise_for_status()
-    soup = bs4.BeautifulSoup(page.text, 'html.parser')
-    x = build_data(soup.find_all('tr', id=has_id))  # gets the list of Unique Elements (see func has_id)
-    all_data.extend(x)
+    try:
+        page = requests.get(link)
+        page.raise_for_status()
+        soup = bs4.BeautifulSoup(page.text, 'html.parser')
+        x = build_data(soup.find_all('tr', id=has_id))  # gets the list of Unique Elements (see func has_id)
+        all_data.extend(x)
+    except:
+        print("Unexpected error parsing web page: {}".format(link))
+        print(sys.exc_info())
 
     return all_data
 
+
+def filter_unicode_string(str):
+    return str.replace(u'\u2212', '-').replace(u'\u2013', '-')
+
+def parse_stats(stats, prepend):
+    results = []
+    for stat in stats:
+        if stat == '<Style Variant> ':  # another web page needs to be gotten
+            x = get_extra_item_data(stats.find('a'))
+            for line in x:
+                results.append(prepend + filter_unicode_string(line))
+        if isinstance(stat, NavigableString):
+            results.append(prepend + filter_unicode_string(stat))
+
+    return results
 
 def build_data(data):
     """
@@ -183,31 +202,29 @@ def build_data(data):
     :param data: BS4 ResultSet
     :return: list
     """
-    unique_data = []
     all_data = []
     for tags in data:
-        unique_data.append(tags.contents[0].text.rstrip())  # name of Unique
-        print('Getting data for {}'.format(tags.contents[0].text.rstrip()))
-        for stats in tags.find_all('div', class_='itemboxstats'):
-            if len(stats.contents) == 1:  # unique has no implicit
-                pass
-            else:
-                unique_data.append('@' + stats.contents[0].text)  # the implicit
-            for stat in stats.contents[len(stats.contents) - 1].contents:
-                try:  # this code searches for uniques like Drillneck that for some reason are different in
-                    if len(stat.contents) > 1:  # how they are set on the webpage.
-                        for line in stat.contents:
-                            if isinstance(line, NavigableString):
-                                unique_data.append(str(line).replace(u'\u2212', '-').replace(u'\u2013', '-'))
-                except AttributeError:
-                    if stat == '<Style Variant> ':  # another web page needs to be gotten
-                        x = get_extra_item_data(stats.find('a'))
-                        for line in x:
-                            unique_data.append(line.replace(u'\u2212', '-').replace(u'\u2013', '-'))
-                    if isinstance(stat, NavigableString):
-                        unique_data.append(str(stat).replace(u'\u2212', '-').replace(u'\u2013', '-'))
-            all_data.append(unique_data)
-            unique_data = []
+        unique_data = []
+        all_data.append(unique_data)
+
+        # First column is name
+        item_name = tags.contents[0].text.rstrip()
+        unique_data.append(item_name)
+        print('Getting data for {}'.format(item_name.encode('utf8')))
+
+        # Modifiers are typically the last column but are grouped under `item-stats`
+        modifiers = tags.find('div', class_='item-stats')
+        if modifiers is not None:
+            # If we have implicits we will have (2) stat groups
+            stats = modifiers.find_all('span', class_='group')
+            offset = 0
+
+            # Do we have an implicit?
+            if len(stats) > 1:
+                offset = 1
+                unique_data.extend(parse_stats(stats[0], '@'))
+
+            unique_data.extend(parse_stats(stats[offset], ''))
 
     return all_data
 
