@@ -270,9 +270,10 @@ def convert_data_to_AHK_readable_format(all_data):
 
 def write(new_data):
 
-    file = open('Uniques.txt', 'a')  # opens file for writing
+    file = open('Uniques.txt', 'ab')  # opens file for writing
     for row in new_data:
-        file.write(row + '\n')  # write each line
+        file.write(row.encode('utf8'))
+        file.write(b'\n')
     file.close()
 
 
