@@ -180,7 +180,7 @@ def parse_category_data(link):
 
 
 def filter_unicode_string(str):
-    return str.replace(u'\u2212', '-').replace(u'\u2013', '-')
+    return str.replace(u'\u2212', '-').replace(u'\u2013', '-').strip()
 
 def parse_stats(stats, prepend):
     results = []
@@ -188,9 +188,13 @@ def parse_stats(stats, prepend):
         if stat == '<Style Variant> ':  # another web page needs to be gotten
             x = get_extra_item_data(stats.find('a'))
             for line in x:
-                results.append(prepend + filter_unicode_string(line))
+                modifier = filter_unicode_string(line)
+                if len(modifier) > 0:
+                    results.append(prepend + modifier)
         if isinstance(stat, NavigableString):
-            results.append(prepend + filter_unicode_string(stat))
+            modifier = filter_unicode_string(stat)
+            if len(modifier) > 0:
+                results.append(prepend + modifier)
 
     return results
 
@@ -208,7 +212,7 @@ def build_data(data):
         all_data.append(unique_data)
 
         # First column is name
-        item_name = tags.contents[0].text.rstrip()
+        item_name = filter_unicode_string(tags.contents[0].text)
         unique_data.append(item_name)
         print('Getting data for {}'.format(item_name.encode('utf8')))
 
@@ -238,11 +242,8 @@ def convert_data_to_AHK_readable_format(all_data):
     new_data = []
     for line in all_data:  # this is the list which contains the item's data
         for list1 in line:  # this iters thru the list and uses regex to search each string
-            line_hold = ""
-            count = 0
+            line_hold = []
             for data in list1:
-                data = data.strip()  # trims any leading/trailing whitespace
-                data = data.replace(u'\u2013', '-')  # needs another unicode replace sometimes
                 mo = rx_search.search(data)  # search with regex and put the results into groups for later editing
                 if mo is not None:  # if regex doesn't return a result, usually the item name, or text in item
                     str_hold = rx_search.sub('', data).strip()  # this removes the search result from the string
@@ -250,18 +251,19 @@ def convert_data_to_AHK_readable_format(all_data):
                     if '@' in str_hold:  # this is the implicit
                         hold = '@' + hold
                         str_hold = str_hold.replace('@', '')
-                    data = '|' + hold + str_hold.strip().title()  # trims and capitalizes the newly constructed string
+                    data = hold + str_hold.strip().title()  # trims and capitalizes the newly constructed string
                     data = data.replace('  ', ' ').replace('% ', '').replace('( To )', '').replace('+', '')  # further cleans up some returned strings
-                    line_hold += data  # adds the newly made piece of data to the overall string to be handed back later
-                    count += 1
+                    line_hold.append(data)  # adds the newly made piece of data to the overall string to be handed back later
                     continue
                 if 'variant' in data:  # check the data piece for the variant that needs some special editing.
-                    line_hold += build_variant(data)
+                    line_hold.append(build_variant(data))
                     continue
-                if count > 1 and data is not '':  # this is for lines that don't have numbers in them, but need to be added
-                    data = '|' + data.strip().title()  # to the item's data. designed to catch odds and ends.
-                line_hold += data
-            new_data.append(line_hold)  # we've rebuilt the unique's info, so add it to the new list for storage.
+                if data is not '':  # this is for lines that don't have numbers in them, but need to be added
+                    data = data.strip().title()  # to the item's data. designed to catch odds and ends.
+
+                if len(data) > 0:
+                    line_hold.append(data)
+            new_data.append('|'.join(line_hold))  # we've rebuilt the unique's info, so add it to the new list for storage.
 
     return new_data
 
